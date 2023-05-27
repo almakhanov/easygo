@@ -1,3 +1,3 @@
 class ProductType:
     HONDA_DIO = "HondaDio"
-    SUZUKE = "Suzuke"
+    VILIMI_M8 = "VilimiM8"

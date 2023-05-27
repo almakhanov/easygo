@@ -29,52 +29,37 @@ class ClientDB:
                     address VARCHAR(255)
                 );
             """)
+            cur.execute(""" CREATE UNIQUE INDEX IF NOT EXISTS clients_chat_id_idx ON clients (chat_id);""")
             self.conn.commit()
 
+    def get_all(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM clients")
+        rows = cur.fetchall()
 
-def get_all():
-    conn = get_connection()
+        clients = []
+        for row in rows:
+            clients.append(Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
+        return clients
 
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM clients")
-    rows = cur.fetchall()
+    def get_client(self, chat_id):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM clients WHERE chat_id = %s", (chat_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        else:
+            return Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9])
 
-    clients = []
-    for row in rows:
-        clients.append(Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
-    return clients
-
-
-def get_client(chat_id):
-    # Connect to database
-    conn = get_connection()
-
-    # Execute query
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM clients WHERE chat_id = %s", (chat_id,))
-    row = cur.fetchone()
-
-    # Create and return Client object
-    return Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9])
-
-
-def insert_client(client):
-    # Connect to database
-    conn = get_connection()
-
-    # Execute query
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO clients (chat_id, username, phone, iin, firstname, surname, second_phone, doc_images, age, address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-        (client.chat_id, client.username, client.phone, client.iin, client.firstname, client.surname,
-         client.second_phone, client.doc_images, client.age, client.address))
-    id = cur.fetchone()[0]
-
-    # Commit changes and close connection
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    # Set client ID and return client object
-    client.id = id
-    return client
+    def insert_client(self, client):
+        cur = self.conn.cursor()
+        cur.execute(
+            "INSERT INTO clients (chat_id, username, phone, iin, firstname, surname, second_phone, doc_images, age, address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (chat_id) DO NOTHING RETURNING id",
+            (client.chat_id, client.username, client.phone, client.iin, client.firstname, client.surname,
+             client.second_phone, client.doc_images, client.age, client.address))
+        id = cur.fetchone()[0]
+        self.conn.commit()
+        cur.close()
+        self.conn.close()
+        client.id = id
+        return client

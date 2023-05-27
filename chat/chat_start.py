@@ -4,6 +4,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 import requests
 
 from db.banner_db import BannerDB
+from db.client_db import ClientDB
 from db.product_db import ProductDB
 from models.status import Status
 from utils.constants import TOKEN
@@ -55,10 +56,10 @@ async def run_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     message = "dodo"
     match action:
         case ActionType.RENT:
-            message = 1
+            start_rent(update, context)
 
         case ActionType.PRICE:
-            await show_price(update, context)
+            show_price(update, context)
 
         case ActionType.CONTACTS:
             contacts = "Наш адрес: г. Астана, ул. Улы дала, дом 62" \
@@ -71,27 +72,31 @@ async def run_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             message = 4
 
 
-async def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def start_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    client_db = ClientDB()
+
+
+
+def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     banner_db = BannerDB()
     product_db = ProductDB()
     banners = banner_db.get_all()
     products = product_db.get_all()
 
     for banner in banners:
+        print(banner.product_type)
         left_count = 0
         total_count = 0
         for product in products:
-            if banner.product_type.__eq__(product.product_type):
+            if banner.product_type == product.product_type:
                 total_count = total_count + 1
-                if product.status.__eq__(Status.ACTIVE):
+                if product.status == Status.ACTIVE:
                     left_count = left_count + 1
-
         banner.left_count = left_count
         banner.total_count = total_count
 
     for banner in banners:
         telegram_msg = requests.get(f'https://api.telegram.org/bot{TOKEN}/sendPhoto?chat_id={update.effective_chat.id}&caption={banner}&photo={banner.image}')
-        print(telegram_msg)
         print(telegram_msg.content)
 
 

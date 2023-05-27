@@ -34,14 +34,14 @@ def fill_products(product_db) -> None:
         Product(number=14, vin="3115917", images=["https://photos.app.goo.gl/5CDT5EZTPTJ1pZzE6"], color="None", model="Honda DIO 34", status=Status.ACTIVE, product_type=ProductType.HONDA_DIO),
         Product(number=15, vin="1539234", images=["https://photos.app.goo.gl/5CDT5EZTPTJ1pZzE6"], color="None", model="Honda DIO 35", status=Status.ACTIVE, product_type=ProductType.HONDA_DIO),
         Product(number=16, vin="1758946", images=["https://photos.app.goo.gl/5CDT5EZTPTJ1pZzE6"], color="None", model="Honda DIO 35", status=Status.INACTIVE, product_type=ProductType.HONDA_DIO),
-        Product(number=17, vin="1111111", images=["https://photos.app.goo.gl/LGSQTy3DWCH46qwc7"], color="Белый", model="Suzuke", status=Status.ACTIVE, product_type=ProductType.SUZUKE)
+        Product(number=17, vin="1111111", images=["https://photos.app.goo.gl/LGSQTy3DWCH46qwc7"], color="Белый", model="Vilimi M8", status=Status.ACTIVE, product_type=ProductType.VILIMI_M8)
     ]
     product_db.insert_all(list)
 
 
 def fill_banners(banner_db) -> None:
     list = [
-        Banner(pricePerWeek=25000, pricePerDay=7000, model="Honda DIO 34", image="https://photos.app.goo.gl/5CDT5EZTPTJ1pZzE6", product_type=ProductType.HONDA_DIO),
-        Banner(pricePerWeek=30000, pricePerDay=9000, model="Suzuke", image="https://photos.app.goo.gl/LGSQTy3DWCH46qwc7", product_type=ProductType.SUZUKE)
+        Banner(pricePerWeek=25000, pricePerDay=7000, model="Honda DIO 34", image="https://photos.app.goo.gl/UWMv5x6YM5KkJoWD6", product_type=ProductType.HONDA_DIO),
+        Banner(pricePerWeek=30000, pricePerDay=9000, model="Vilimi M8", image="https://photos.app.goo.gl/KJWpxfEHJipgbagu5", product_type=ProductType.VILIMI_M8)
     ]
     banner_db.insert_all(list)
