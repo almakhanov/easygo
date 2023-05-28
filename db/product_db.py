@@ -20,7 +20,6 @@ class ProductDB:
                     number INTEGER,
                     vin VARCHAR(255) NOT NULL UNIQUE,
                     images VARCHAR(3000)[],
-                    color VARCHAR(255) NOT NULL,
                     model VARCHAR(255) NOT NULL,
                     status VARCHAR(255) NOT NULL,
                     product_type VARCHAR(255) NOT NULL
@@ -37,7 +36,7 @@ class ProductDB:
         # Create and return list of Product objects
         products = []
         for row in rows:
-            products.append(Product(row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
+            products.append(Product(row[1], row[2], row[3], row[4], row[5], row[6]))
         return products
 
     def get_product(self, number):
@@ -46,30 +45,26 @@ class ProductDB:
         row = cur.fetchone()
 
         # Create and return Product object
-        return Product(row[1], row[2], row[3], row[4], row[5], row[6], row[7])
+        return Product(row[1], row[2], row[3], row[4], row[5], row[6])
 
     def insert_product(self, product):
         cur = self.conn.cursor()
         cur.execute(
-            "INSERT INTO products (number, vin, images, color, model, status, product_type) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (vin) DO NOTHING RETURNING id",
-            (product.number, product.vin, product.images, product.color, product.model, product.status, product.product_type))
-        id = cur.fetchone()[0]
+            "INSERT INTO products (number, vin, images, model, status, product_type) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (vin) DO NOTHING RETURNING id",
+            (product.number, product.vin, product.images, product.model, product.status, product.product_type))
 
         # Commit changes and close connection
         self.conn.commit()
         cur.close()
         self.conn.close()
-
-        # Set product ID and return product object
-        product.id = id
         return product
 
     def insert_all(self, products):
         cur = self.conn.cursor()
         for product in products:
             cur.execute(
-                "INSERT INTO products (number, vin, images, color, model, status, product_type) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (vin) DO NOTHING RETURNING id",
-                (product.number, product.vin, product.images, product.color, product.model, product.status, product.product_type))
+                "INSERT INTO products (number, vin, images, model, status, product_type) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (vin) DO NOTHING RETURNING id",
+                (product.number, product.vin, product.images, product.model, product.status, product.product_type))
 
         self.conn.commit()
         cur.close()

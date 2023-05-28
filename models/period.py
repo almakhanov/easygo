@@ -1,0 +1,8 @@
+class Period:
+    ONE_DAY = "ONE_DAY"
+    TWO_DAYS = "TWO_DAYS"
+    THREE_DAYS = "THREE_DAYS"
+    ONE_WEEK = "ONE_WEEK"
+    TWO_WEEKS = "TWO_WEEKS"
+    THREE_WEEKS = "THREE_WEEKS"
+    ONE_MONTH = "ONE_MONTH"

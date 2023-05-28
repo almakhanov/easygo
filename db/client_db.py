@@ -18,14 +18,13 @@ class ClientDB:
                 CREATE TABLE IF NOT EXISTS clients (
                     id SERIAL PRIMARY KEY,
                     chat_id VARCHAR(255) NOT NULL,
-                    username VARCHAR(255) NOT NULL,
+                    username VARCHAR(255),
                     phone VARCHAR(255),
                     iin VARCHAR(255),
                     firstname VARCHAR(255),
-                    surname VARCHAR(255),
+                    lastname VARCHAR(255),
                     second_phone VARCHAR(255),
-                    doc_images VARCHAR(255)[],
-                    age INTEGER,
+                    doc_images VARCHAR(3000)[],
                     address VARCHAR(255)
                 );
             """)
@@ -39,7 +38,7 @@ class ClientDB:
 
         clients = []
         for row in rows:
-            clients.append(Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
+            clients.append(Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
         return clients
 
     def get_client(self, chat_id):
@@ -49,17 +48,39 @@ class ClientDB:
         if row is None:
             return None
         else:
-            return Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9])
+            return Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
 
     def insert_client(self, client):
         cur = self.conn.cursor()
         cur.execute(
-            "INSERT INTO clients (chat_id, username, phone, iin, firstname, surname, second_phone, doc_images, age, address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (chat_id) DO NOTHING RETURNING id",
-            (client.chat_id, client.username, client.phone, client.iin, client.firstname, client.surname,
-             client.second_phone, client.doc_images, client.age, client.address))
-        id = cur.fetchone()[0]
+            "INSERT INTO clients (chat_id, username, phone, iin, firstname, lastname, second_phone, doc_images, address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (chat_id) DO NOTHING RETURNING id",
+            (client.chat_id, client.username, client.phone, client.iin, client.firstname, client.lastname,
+             client.second_phone, client.doc_images, client.address))
         self.conn.commit()
         cur.close()
         self.conn.close()
-        client.id = id
         return client
+
+    def update_client(self, client):
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE clients
+                SET username = %s, phone = %s, iin = %s, 
+                firstname = %s, lastname = %s, 
+                second_phone = %s, doc_images = %s, address = %s
+                WHERE chat_id = %s
+                RETURNING id
+            """, (
+                client.username,
+                client.phone,
+                client.iin,
+                client.firstname,
+                client.lastname,
+                client.second_phone,
+                client.doc_images,
+                client.address,
+                client.chat_id
+            ))
+        self.conn.commit()
+        cur.close()
+        self.conn.close()

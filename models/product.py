@@ -1,9 +1,8 @@
 class Product:
-    def __init__(self, number, vin, images, color, model, status, product_type):
+    def __init__(self, number, vin, images, model, status, product_type):
         self.number = number
         self.vin = vin
         self.images = images
-        self.color = color
         self.model = model
         self.status = status
         self.product_type = product_type

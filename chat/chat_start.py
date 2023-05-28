@@ -8,6 +8,7 @@ import requests
 from db.banner_db import BannerDB
 from db.client_db import ClientDB
 from db.product_db import ProductDB
+from models.client import Client
 from models.status import Status
 from utils.constants import TOKEN
 
@@ -25,6 +26,7 @@ def init_bot() -> None:
 
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(inline_options))
+    application.add_handler(MessageHandler(filters.TEXT, message_handler))
     application.run_polling()
 
 
@@ -55,6 +57,19 @@ class HelpOptions:
     HELP8 = "💵 Какие цены на запчасти?"
 
 
+class ClientState:
+    IDLE = "IDLE"
+    LAST_NAME = "LAST_NAME"
+    FIRST_NAME = "FIRST_NAME"
+    IIN = "IIN"
+    PHONE = "PHONE"
+    SECOND_PHONE = "SECOND_PHONE"
+    ADDRESS = "ADDRESS"
+    PHOTO = "PHOTO"
+
+
+client_state_map = {}
+
 main_keyboard = [[ActionType.RENT, ActionType.PRICE], [ActionType.CONTACTS, ActionType.HELP]]
 
 
@@ -67,7 +82,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             main_keyboard, one_time_keyboard=False, input_field_placeholder="Выберите действие"
         ),
     )
-
+    client = Client(chat_id=update.effective_chat.id, username=update.effective_user.username)
+    client_db = ClientDB()
+    client_db.insert_client(client)
+    client_state_map.__setitem__(update.effective_chat.id, ClientState.IDLE)
     return ACTION
 
 
@@ -98,8 +116,6 @@ class RentOptions:
 
 async def inline_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    print(query)
-    print(query.message)
     print(query.data)
     if query.data.startswith(RentOptions.ACCEPT_RULES):
         await choose_moped(update, context, query)
@@ -111,6 +127,8 @@ async def inline_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await show_product_by_number(update, context, query)
     elif query.data.startswith(RentOptions.DENY_PRODUCT):
         await choose_moped(update, context, query)
+    elif query.data.startswith(RentOptions.ACCEPT_PRODUCT):
+        await confirm_product(update, context, query)
 
 
 async def start_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -189,8 +207,107 @@ async def show_product_by_number(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode=ParseMode.HTML)
 
 
-async def check_client(update: Update, context: ContextTypes.DEFAULT_TYPE, number) -> None:
-    await update.message.reply_text(text=f"{update.effective_user.full_name}")
+async def confirm_product(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> None:
+    product_db = ProductDB()
+    product_number = query.data.replace(f"{RentOptions.ACCEPT_PRODUCT}_", "")
+    product = product_db.get_product(product_number)
+    # Create rent
+
+    title = f"<b>{product.model}</b> c номером <b>{product.number}</b> выбран успешно ✅"
+    await query.edit_message_text(title, parse_mode=ParseMode.HTML)
+    await check_client(update, context)
+
+
+async def check_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    client_db = ClientDB()
+
+    client = client_db.get_client(update.effective_chat.id.__str__())
+    if client.lastname is None:
+        await enter_last_name(update, context)
+    elif client.firstname is None:
+        await enter_first_name(update, context)
+    elif client.iin is None:
+        await enter_iin(update, context)
+    elif client.phone is None:
+        await enter_phone(update, context)
+    elif client.second_phone is None:
+        await enter_second_phone(update, context)
+    elif client.address is None:
+        await enter_address(update, context)
+    else:
+        await complete_rent(update, context, )
+
+
+async def complete_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # PUSH
+    amount = 99999
+    await update.message.reply_text(
+        f"Заказ создан ✅\n"
+        f"Теперь вам нужно оплатить сумму в размере <b>{'{:0,.2f}'.format(amount)} ₸</b> через KaspiQR ",
+        parse_mode=ParseMode.HTML)
+
+
+async def enter_last_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите вашу Фамилию ✏️"
+    print(update)
+    print(update.message)
+    print(update.effective_chat)
+    client_state_map.__setitem__(update.effective_chat.id, ClientState.LAST_NAME)
+    await update.message.reply_text(text=title, parse_mode=ParseMode.MARKDOWN)
+
+
+async def enter_first_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите ваше Имя ✏️"
+    client_state_map[update.effective_chat.id] = ClientState.FIRST_NAME
+    await update.message.reply_text(title)
+
+
+async def enter_iin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите ваш ИИН ✏️"
+    client_state_map[update.effective_chat.id] = ClientState.IIN
+    await update.message.reply_text(title)
+
+
+async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите ваш номер телефона ✏️"
+    client_state_map[update.effective_chat.id] = ClientState.PHONE
+    await update.message.reply_text(title)
+
+
+async def enter_second_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите номер телефона вашего близкого человека ✏️"
+    client_state_map[update.effective_chat.id] = ClientState.SECOND_PHONE
+    await update.message.reply_text(title)
+
+
+async def enter_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = "Введите ваш адрес дома ✏️"
+    client_state_map.__setitem__(update.effective_chat.id, ClientState.ADDRESS)
+    await update.message.reply_text(title)
+
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print(update.effective_chat.id)
+    print(client_state_map.get(update.effective_chat.id))
+    if client_state_map.get(update.effective_chat.id) != ClientState.IDLE:
+        client_db = ClientDB()
+        client = client_db.get_client(update.effective_chat.id.__str__())
+        match client_state_map[update.effective_chat.id]:
+            case ClientState.LAST_NAME:
+                client.lastname = update.message.text
+            case ClientState.FIRST_NAME:
+                client.firstname = update.message.text
+            case ClientState.IIN:
+                client.iin = update.message.text
+            case ClientState.PHONE:
+                client.phone = update.message.text
+            case ClientState.SECOND_PHONE:
+                client.second_phone = update.message.text
+            case ClientState.ADDRESS:
+                client.address = update.message.text
+
+        client_db.update_client(client)
+        await check_client(update, context)
 
 
 def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
