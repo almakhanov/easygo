@@ -19,7 +19,7 @@ class ProductDB:
                     id SERIAL PRIMARY KEY,
                     number INTEGER,
                     vin VARCHAR(255) NOT NULL UNIQUE,
-                    images VARCHAR(255)[],
+                    images VARCHAR(3000)[],
                     color VARCHAR(255) NOT NULL,
                     model VARCHAR(255) NOT NULL,
                     status VARCHAR(255) NOT NULL,
@@ -40,9 +40,9 @@ class ProductDB:
             products.append(Product(row[1], row[2], row[3], row[4], row[5], row[6], row[7]))
         return products
 
-    def get_product(self, id):
+    def get_product(self, number):
         cur = self.conn.cursor()
-        cur.execute("SELECT * FROM products WHERE id = %s", (id,))
+        cur.execute("SELECT * FROM products WHERE number = %s", (number,))
         row = cur.fetchone()
 
         # Create and return Product object

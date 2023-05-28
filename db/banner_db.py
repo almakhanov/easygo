@@ -21,7 +21,7 @@ class BannerDB:
                     price_per_week INTEGER NOT NULL,
                     price_per_day INTEGER NOT NULL,
                     model VARCHAR(255) NOT NULL,
-                    image VARCHAR(255) NOT NULL,
+                    image VARCHAR(3000) NOT NULL,
                     product_type VARCHAR(255) NOT NULL
                 );
             """)
