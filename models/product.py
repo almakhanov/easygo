@@ -7,6 +7,16 @@ class Product:
         self.status = status
         self.product_type = product_type
 
+    def to_dict(self):
+        return {
+            'number': self.number,
+            'vin': self.vin,
+            'images': self.images,
+            'model': self.model,
+            'status': self.status,
+            'product_type': self.product_type
+        }
+
     def __str__(self):
         return f"Номер мопеда: {self.number}\n" \
                f"VIN номер {self.vin}\n" \

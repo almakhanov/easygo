@@ -38,7 +38,7 @@ class ClientDB:
 
         clients = []
         for row in rows:
-            clients.append(Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]))
+            clients.append(Client(row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
         return clients
 
     def get_client(self, chat_id):
@@ -48,7 +48,7 @@ class ClientDB:
         if row is None:
             return None
         else:
-            return Client(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
+            return Client(row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9])
 
     def insert_client(self, client):
         cur = self.conn.cursor()
@@ -65,22 +65,7 @@ class ClientDB:
         with self.conn.cursor() as cur:
             cur.execute("""
                 UPDATE clients
-                SET username = %s, phone = %s, iin = %s, 
-                firstname = %s, lastname = %s, 
-                second_phone = %s, doc_images = %s, address = %s
+                SET username = %s, phone = %s, iin = %s, firstname = %s, lastname = %s, second_phone = %s, doc_images = %s, address = %s
                 WHERE chat_id = %s
-                RETURNING id
-            """, (
-                client.username,
-                client.phone,
-                client.iin,
-                client.firstname,
-                client.lastname,
-                client.second_phone,
-                client.doc_images,
-                client.address,
-                client.chat_id
-            ))
-        self.conn.commit()
-        cur.close()
-        self.conn.close()
+            """, (client.username, client.phone, client.iin, client.firstname, client.lastname, client.second_phone, client.doc_images, client.address, client.chat_id))
+            self.conn.commit()

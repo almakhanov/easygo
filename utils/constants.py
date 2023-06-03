@@ -4,3 +4,5 @@ DB_NAME = "postgres"
 DB_USERNAME = "postgres"
 DB_PASSWORD = "0"
 HOST = "localhost"
+
+ADMINS = ["337256252"]

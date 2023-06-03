@@ -1,4 +1,5 @@
-from requests import Response
+from datetime import datetime, timedelta
+
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, ConversationHandler, \
@@ -7,10 +8,16 @@ import requests
 
 from db.banner_db import BannerDB
 from db.client_db import ClientDB
+from db.price_db import PriceDB
 from db.product_db import ProductDB
+from db.rent_db import RentDB
 from models.client import Client
+from models.payment_type import PaymentType
+from models.period import Period
+from models.rent import Rent
+from models.rent_status import RentStatus
 from models.status import Status
-from utils.constants import TOKEN
+from utils.constants import TOKEN, ADMINS
 
 
 def init_bot() -> None:
@@ -19,19 +26,19 @@ def init_bot() -> None:
         entry_points=[CommandHandler("start", start)],
         states={
             ACTION: [MessageHandler(filters.TEXT, run_action)],
-            HELP: [MessageHandler(filters.TEXT, run_help)]
+            HELP: [MessageHandler(filters.TEXT, run_help)],
+            BOOKING: [CallbackQueryHandler(inline_options)],
+            CLIENT: [MessageHandler(filters.TEXT, message_handler)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(inline_options))
-    application.add_handler(MessageHandler(filters.TEXT, message_handler))
     application.run_polling()
 
 
 # Main Menu Responses
-ACTION, HELP = range(2)
+ACTION, HELP, BOOKING, CLIENT = range(4)
 
 
 class ActionType:
@@ -55,6 +62,7 @@ class HelpOptions:
     HELP6 = "🔴 Могу ли я брать мопед по Kaspi Red?"
     HELP7 = "🥷 Что если украли мопед?"
     HELP8 = "💵 Какие цены на запчасти?"
+    HELP9 = "🚪 Выход"
 
 
 class ClientState:
@@ -68,9 +76,12 @@ class ClientState:
     PHOTO = "PHOTO"
 
 
-client_state_map = {}
-
 main_keyboard = [[ActionType.RENT, ActionType.PRICE], [ActionType.CONTACTS, ActionType.HELP]]
+payment_type_map = {
+    PaymentType.KASPI_GOLD: "Оплата с KaspiQR 🤳",
+    PaymentType.KASPI_RED: "Kaspi Red 🔴",
+    PaymentType.CASH: "Наличными/Перевод 💵"
+}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -85,7 +96,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     client = Client(chat_id=update.effective_chat.id, username=update.effective_user.username)
     client_db = ClientDB()
     client_db.insert_client(client)
-    client_state_map.__setitem__(update.effective_chat.id, ClientState.IDLE)
+    context.user_data['state'] = ClientState.IDLE
     return ACTION
 
 
@@ -112,23 +123,33 @@ class RentOptions:
     CHOOSE_PRODUCT = "CHOOSE_PRODUCT"
     ACCEPT_PRODUCT = "ACCEPT_PRODUCT"
     DENY_PRODUCT = "DENY_PRODUCT"
+    PERIOD = "PERIOD"
+    PAYMENT_TYPE = "PAYMENT_TYPE"
 
 
-async def inline_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def inline_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
+    print("[inline_options]")
     print(query.data)
     if query.data.startswith(RentOptions.ACCEPT_RULES):
-        await choose_moped(update, context, query)
+        return await choose_moped(update, context, query)
     elif query.data.startswith(RentOptions.DENY_RULES):
-        await query.edit_message_text(text=f"Заказ отменен ❌\nХорошего вам дня 😉")
+        return await query.edit_message_text(text=f"Заказ отменен ❌\nХорошего вам дня 😉")
     elif query.data.startswith(RentOptions.PRODUCT_TYPE):
-        await show_products(update, context, query)
+        return await show_products(update, context, query)
     elif query.data.startswith(RentOptions.CHOOSE_PRODUCT):
-        await show_product_by_number(update, context, query)
+        return await show_product_by_number(update, context, query)
     elif query.data.startswith(RentOptions.DENY_PRODUCT):
-        await choose_moped(update, context, query)
+        return await choose_moped(update, context, query)
     elif query.data.startswith(RentOptions.ACCEPT_PRODUCT):
-        await confirm_product(update, context, query)
+        return await choose_period(update, context, query)
+    elif query.data.startswith(RentOptions.PERIOD):
+        return await choose_payment_method(update, context, query)
+    elif query.data.startswith(RentOptions.PAYMENT_TYPE):
+        context.user_data['rent_data'] = query.data
+        title = "Проверка пользователя..."
+        await query.edit_message_text(text=title)
+        return await check_client(update, context)
 
 
 async def start_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -140,10 +161,10 @@ async def start_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = [[InlineKeyboardButton(ActionType.ACCEPT, callback_data=RentOptions.ACCEPT_RULES),
                  InlineKeyboardButton(ActionType.CANCEL, callback_data=RentOptions.DENY_RULES)]]
     await update.message.reply_text(text=rules, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
-    return ACTION
+    return BOOKING
 
 
-async def choose_moped(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> None:
+async def choose_moped(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> int:
     banners_db = BannerDB()
     banners = banners_db.get_all()
     product_db = ProductDB()
@@ -164,9 +185,10 @@ async def choose_moped(update: Update, context: ContextTypes.DEFAULT_TYPE, query
 
     keyboard.append([InlineKeyboardButton(ActionType.CANCEL, callback_data=RentOptions.DENY_RULES)])
     await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    return BOOKING
 
 
-async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> None:
+async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> int:
     product_db = ProductDB()
     products = product_db.get_all()
     product_type = query.data.replace(f"{RentOptions.PRODUCT_TYPE}_", "")
@@ -192,9 +214,10 @@ async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, quer
 
     keyboard.append([InlineKeyboardButton(ActionType.CANCEL, callback_data=RentOptions.DENY_RULES)])
     await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    return BOOKING
 
 
-async def show_product_by_number(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> None:
+async def show_product_by_number(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> int:
     title = "ВЫ УВЕРЕНЫ ЧТО ХОТИТЕ ВЫБРАТЬ ИМЕННО ЭТОТ МОПЕД?"
     product_db = ProductDB()
     product_number = query.data.replace(f"{RentOptions.CHOOSE_PRODUCT}_", "")
@@ -205,94 +228,206 @@ async def show_product_by_number(update: Update, context: ContextTypes.DEFAULT_T
     keyboard = [[InlineKeyboardButton(ActionType.YES, callback_data=f"{RentOptions.ACCEPT_PRODUCT}_{product.number}"),
                  InlineKeyboardButton(ActionType.NO, callback_data=RentOptions.DENY_PRODUCT)]]
     await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode=ParseMode.HTML)
+    return BOOKING
 
 
-async def confirm_product(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> None:
+async def choose_period(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> int:
     product_db = ProductDB()
     product_number = query.data.replace(f"{RentOptions.ACCEPT_PRODUCT}_", "")
-    product = product_db.get_product(product_number)
-    # Create rent
+    product_type = product_db.get_product(product_number).product_type
+    prices = PriceDB().get_by_product_type(product_type)
+    data = f"{RentOptions.PERIOD}-{product_number}"
 
-    title = f"<b>{product.model}</b> c номером <b>{product.number}</b> выбран успешно ✅"
-    await query.edit_message_text(title, parse_mode=ParseMode.HTML)
-    await check_client(update, context)
+    title = "ВЫБЕРИТЕ ПЕРИОД АРЕНДЫ ⬇️"
+
+    keyboard = []
+    for price in prices:
+        keyboard.append([InlineKeyboardButton(f"{price.text} {'{:0,.2f}'.format(price.price)} ₸", callback_data=f"{data}-{price.period}")])
+    keyboard.append([InlineKeyboardButton(ActionType.CANCEL, callback_data=RentOptions.DENY_RULES)])
+    await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode=ParseMode.HTML)
+    return BOOKING
 
 
-async def check_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def choose_payment_method(update: Update, context: ContextTypes.DEFAULT_TYPE, query) -> int:
+    query_row = query.data.split('-')
+
+    data = f"{RentOptions.PAYMENT_TYPE}-{query_row[1]}-{query_row[2]}"
+
+    title = "ВЫБЕРИТЕ СПОСОБ ОПЛАТЫ ⬇️"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(payment_type_map[PaymentType.KASPI_GOLD], callback_data=f"{data}-{PaymentType.KASPI_GOLD}")
+        ],
+        [
+            InlineKeyboardButton(payment_type_map[PaymentType.KASPI_RED], callback_data=f"{data}-{PaymentType.KASPI_RED}")
+        ],
+        [
+            InlineKeyboardButton(payment_type_map[PaymentType.CASH], callback_data=f"{data}-{PaymentType.CASH}")
+        ],
+        [
+            InlineKeyboardButton(ActionType.CANCEL, callback_data=RentOptions.DENY_RULES)
+        ]
+    ]
+    await query.edit_message_text(text=title, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode=ParseMode.HTML)
+    return BOOKING
+
+
+async def check_client(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     client_db = ClientDB()
-
     client = client_db.get_client(update.effective_chat.id.__str__())
     if client.lastname is None:
-        await enter_last_name(update, context)
+        return await enter_last_name(update, context)
     elif client.firstname is None:
-        await enter_first_name(update, context)
+        return await enter_first_name(update, context)
     elif client.iin is None:
-        await enter_iin(update, context)
+        return await enter_iin(update, context)
     elif client.phone is None:
-        await enter_phone(update, context)
+        return await enter_phone(update, context)
     elif client.second_phone is None:
-        await enter_second_phone(update, context)
+        return await enter_second_phone(update, context)
     elif client.address is None:
-        await enter_address(update, context)
+        return await enter_address(update, context)
     else:
-        await complete_rent(update, context, )
+        context.user_data['state'] = ClientState.IDLE
+        return await complete_rent(update, context)
 
 
-async def complete_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # PUSH
-    amount = 99999
-    await update.message.reply_text(
-        f"Заказ создан ✅\n"
-        f"Теперь вам нужно оплатить сумму в размере <b>{'{:0,.2f}'.format(amount)} ₸</b> через KaspiQR ",
-        parse_mode=ParseMode.HTML)
+async def complete_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    client = ClientDB().get_client(update.effective_chat.id.__str__())
+    query_row = context.user_data["rent_data"].split('-')
+    product_number = query_row[1]
+    period = query_row[2]
+    payment_type = query_row[3]
+    product = ProductDB().get_product(product_number)
+    prices = PriceDB().get_by_product_type(product.product_type)
+    price = None
+    for p in prices:
+        if p.period == period:
+            price = p
+    now = datetime.now()
+    start_date = now.strftime("%d/%m/%Y, %H:%M:%S")
+    then = now + timedelta(days=price.days)
+    end_date = then.strftime("%d/%m/%Y, %H:%M:%S")
+
+    end_date_text = then.strftime("%d %b %Y, %H:%M")
+    # f"<b>Дата возврата:</b> {end_date_text} 🗓\n" \
+
+    user_price = price.price
+    price_add_info = ""
+    if payment_type == PaymentType.KASPI_RED:
+        user_price = price.price / (1 - 0.125)
+        price_add_info = " (с 12.5% Red)"
 
 
-async def enter_last_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    title = f"<b>Заказ принят</b> ✅\n"\
+            f"<b>Мопед:</b> #️⃣ {product.number} - {product.model}\n" \
+            f"<b>Период:</b> {price.text}\n" \
+            f"<b>Способ оплаты:</b> {payment_type_map[payment_type]}\n" \
+            f"<b>Итого:</b> <u>{'{:0,.2f}'.format(user_price)} ₸{price_add_info}</u>"
+
+    rent_db = RentDB()
+
+    rent = Rent(
+        chat_id=update.effective_chat.id,
+        client_fullname=client.firstname + " " + client.lastname,
+        product_number=product_number,
+        product_type=product.product_type,
+        start_date=start_date,
+        end_date=end_date,
+        price=price.price,
+        payment_type=payment_type,
+        rent_status=RentStatus.RESERVE
+    )
+    rent_db.insert(rent)
+
+    for admin in ADMINS:
+        try:
+            req_body = f'https://api.telegram.org/bot' + TOKEN + '/sendMessage?chat_id=' + admin + '&parse_mode=HTML&text=' + title
+            resp = requests.get(req_body)
+            print(resp.content)
+        except Exception as e:
+            print(e)
+
+    try:
+        await update.callback_query.message.reply_text(title, parse_mode=ParseMode.HTML)
+    except:
+        await update.message.reply_text(title, parse_mode=ParseMode.HTML)
+    return ACTION
+
+
+async def enter_last_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите вашу Фамилию ✏️"
-    print(update)
-    print(update.message)
-    print(update.effective_chat)
-    client_state_map.__setitem__(update.effective_chat.id, ClientState.LAST_NAME)
-    await update.message.reply_text(text=title, parse_mode=ParseMode.MARKDOWN)
+    context.user_data['state'] = ClientState.LAST_NAME
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def enter_first_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enter_first_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите ваше Имя ✏️"
-    client_state_map[update.effective_chat.id] = ClientState.FIRST_NAME
-    await update.message.reply_text(title)
+    context.user_data['state'] = ClientState.FIRST_NAME
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def enter_iin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enter_iin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите ваш ИИН ✏️"
-    client_state_map[update.effective_chat.id] = ClientState.IIN
-    await update.message.reply_text(title)
+    context.user_data['state'] = ClientState.IIN
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите ваш номер телефона ✏️"
-    client_state_map[update.effective_chat.id] = ClientState.PHONE
-    await update.message.reply_text(title)
+    context.user_data['state'] = ClientState.PHONE
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def enter_second_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enter_second_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите номер телефона вашего близкого человека ✏️"
-    client_state_map[update.effective_chat.id] = ClientState.SECOND_PHONE
-    await update.message.reply_text(title)
+    context.user_data['state'] = ClientState.SECOND_PHONE
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def enter_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enter_address(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     title = "Введите ваш адрес дома ✏️"
-    client_state_map.__setitem__(update.effective_chat.id, ClientState.ADDRESS)
-    await update.message.reply_text(title)
+    context.user_data['state'] = ClientState.ADDRESS
+    try:
+        await update.callback_query.message.reply_text(title)
+    except:
+        await update.message.reply_text(title)
+    return CLIENT
 
 
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    print("[message_handler]")
     print(update.effective_chat.id)
-    print(client_state_map.get(update.effective_chat.id))
-    if client_state_map.get(update.effective_chat.id) != ClientState.IDLE:
+    try:
+        print(context.user_data['state'])
+    except:
+        context.user_data['state'] = ClientState.IDLE
+
+    if context.user_data['state'] != ClientState.IDLE:
         client_db = ClientDB()
         client = client_db.get_client(update.effective_chat.id.__str__())
-        match client_state_map[update.effective_chat.id]:
+        match context.user_data['state']:
             case ClientState.LAST_NAME:
                 client.lastname = update.message.text
             case ClientState.FIRST_NAME:
@@ -306,8 +441,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             case ClientState.ADDRESS:
                 client.address = update.message.text
 
+        print(client)
         client_db.update_client(client)
-        await check_client(update, context)
+        return await check_client(update, context)
 
 
 def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -315,6 +451,7 @@ def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     product_db = ProductDB()
     banners = banner_db.get_all()
     products = product_db.get_all()
+    price_db = PriceDB()
 
     for banner in banners:
         print(banner.product_type)
@@ -325,16 +462,26 @@ def show_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 total_count = total_count + 1
                 if product.status == Status.ACTIVE:
                     left_count = left_count + 1
+
+        prices = price_db.get_by_product_type(banner.product_type)
+
+        for price in prices:
+            if price.period == Period.ONE_WEEK:
+                banner.price_per_week = price.price
+
+            if price.period == Period.ONE_DAY:
+                banner.price_per_day = price.price
+
         banner.left_count = left_count
         banner.total_count = total_count
 
     for banner in banners:
-        resp = None
         try:
-            resp = requests.get(
-                f'https://api.telegram.org/bot{TOKEN}/sendPhoto?chat_id={update.effective_chat.id}&caption={banner}&photo={banner.image}')
-        except:
-            print(resp)
+            req_body = f'https://api.telegram.org/bot{TOKEN}/sendPhoto?chat_id={update.effective_chat.id}&caption={banner}&photo={banner.image}'
+            resp = requests.get(req_body)
+            print(resp.content)
+        except Exception as e:
+            print(e)
     return ACTION
 
 
@@ -350,7 +497,8 @@ async def show_contacts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def show_help_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_keyboard = [[HelpOptions.HELP0], [HelpOptions.HELP1], [HelpOptions.HELP2], [HelpOptions.HELP3],
-                      [HelpOptions.HELP4], [HelpOptions.HELP5], [HelpOptions.HELP7], [HelpOptions.HELP8]]
+                      [HelpOptions.HELP4], [HelpOptions.HELP5], [HelpOptions.HELP7], [HelpOptions.HELP8],
+                      [HelpOptions.HELP9]]
     await update.message.reply_text(
         "Чем я могу быть вам полезен?",
         reply_markup=ReplyKeyboardMarkup(
@@ -368,38 +516,75 @@ async def run_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             reply_text = "Условия аренды мопеда!\n" \
                          "1) Лица старше 18 лет (при себе иметь удв.личности)\n" \
                          "2) Знание ПДД\n" \
-                         "3) Подтверждение работы курьером мин 1 месяц (для курьеров)"
+                         "3) Подтверждение работы курьером мин 1 месяц (для курьеров)\n" \
+                         "4) Подписание договора\n" \
+                         "5) Эксплуатация мопеда в пределах города Астана\n" \
+                         "6) Иметь безопасное месторасположение для парковки мопеда на ночь. К безопасным местам относится:\n" \
+                         "\t- частный дом;\n" \
+                         "\t- собственная парковка;\n" \
+                         "\t- охраняемое ЖК с камерами, охраной, забором где не будет возможности унести мопед без ключа домофона. Не оставлять возле подьезда;\n" \
+                         "7) Гражданин РК"
 
         case HelpOptions.HELP1:
-            reply_text = f"HelpOptions.HELP1"
+            reply_text = f"1) Вызовите грузовик через “Яндекс Go” до <a href='https://2gis.kz/astana/geo/9570784863354424'>Улы Дала 62, гараж 9</a> (Опций: Без грузчика; Маленький кузов. Оплатим грузовик за свой счёт, после отправки скрина вызова грузовика). Мы сделаем замену мопеда.\n" \
+                         f"2) Если у Вас <b>ВО ВРЕМЯ ЗАКАЗА</b> не заводится мопед, то вызовите доставку до адреса Вашего заказа (оплатим доставку за свой счёт, после отправки скрина вызова доставки и адреса доставки с приложения Glovo/Wolt/Яндекс).  "
 
         case HelpOptions.HELP2:
-            reply_text = f"HelpOptions.HELP2"
+            reply_text = f"Без паники. Звоните на номера:\n" \
+                         f"1) +77022021399\n" \
+                         f"2) +77779565737"
 
         case HelpOptions.HELP3:
-            reply_text = f"HelpOptions.HELP3"
+            reply_text = f"Если мопед сломан по Вашей вине, то у Вас два выбора:\n" \
+                         f"1) Вы оплачиваете штраф за повреждение согласно договору\n" \
+                         f"2) Вы чините мопед сами. Находите техника, спец. СТО. Ставить качественные запчасти! Продлеваете аренду если не успеваете с ремонтом\n\n" \
+                         f"PS. Если вы считаете, что мопед не был сломан по Вашей вине и это подтвердит мастер, то мы Вам сделаем замену мопеда"
 
         case HelpOptions.HELP4:
-            reply_text = f"HelpOptions.HELP4"
+            reply_text = f"Ежедневный штраф по дневному тарифному плану 7000 тг."
 
         case HelpOptions.HELP5:
-            reply_text = f"HelpOptions.HELP5"
+            reply_text = f"Безопасные места:\n" \
+                         f"1) Частный дом\n" \
+                         f"2) Cобственная парковка\n" \
+                         f"3) Охраняемое ЖК с камерами, охраной, забором где не будет возможности унести мопед без ключа домофона. Не оставлять возле подьезда"
 
         case HelpOptions.HELP6:
-            reply_text = f"HelpOptions.HELP6"
+            reply_text = f"Да, цена с Kaspi Red = Цена + Комиссия банка (12.5%)"
 
         case HelpOptions.HELP7:
-            reply_text = f"HelpOptions.HELP7"
+            reply_text = f"Оплачиваете сумму указанную по договору за мопед – 440 000 ₸"
 
         case HelpOptions.HELP8:
-            reply_text = f"HelpOptions.HELP7"
+            reply_text = f"Цены на запчасти:\n" \
+                         f"- Боковой обтекатель: 36 000 ₸\n" \
+                         f"- Передний парус: 18 000 ₸\n" \
+                         f"- Передняя накладка: 20 000 ₸\n" \
+                         f"- Окантовка фары: 12 000 ₸\n" \
+                         f"- Пластик руля (2 части): 36 000 ₸\n" \
+                         f"- Фара: 8 500 ₸\n" \
+                         f"- Стоп-сигнал в сборе: 14 000 ₸\n" \
+                         f"- Ручка газа: 8 500 ₸\n" \
+                         f"- Колесный диск: 12 000 ₸\n" \
+                         f"- Крыло переднее: 36 000 ₸\n" \
+                         f"- Кнопка, переключатель: 3 600 ₸\n" \
+                         f"- Зеркала комплект: 6 000 ₸\n" \
+                         f"- Ключ: 12 000 ₸\n" \
+                         f"- Покрышка: 14 000 ₸\n" \
+                         f"- Глушитель: 24 000 ₸\n" \
+                         f"- Чехол сидения: 18 000 ₸\n" \
+                         f"- Шлем: 9 000 ₸"
+
+        case HelpOptions.HELP9:
+            reply_text = f"Если вы не нашли вопрос который вас волнует, наберите нас по номеру указанной в пункте <b>Контакты ☎️</b>"
 
     print(reply_text)
     await update.message.reply_text(
         reply_text,
         reply_markup=ReplyKeyboardMarkup(
             main_keyboard, one_time_keyboard=False, input_field_placeholder="Выберите действие"
-        )
+        ),
+        parse_mode=ParseMode.HTML
     )
     return ACTION
 

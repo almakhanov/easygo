@@ -10,3 +10,6 @@ class Client:
         self.second_phone = second_phone
         self.doc_images = doc_images
         self.address = address
+
+    def __str__(self):
+        return f"Client(chat_id={self.chat_id}, username={self.username}, phone={self.phone}, iin={self.iin}, firstname={self.firstname}, lastname={self.lastname}, second_phone={self.second_phone}, doc_images={self.doc_images}, address={self.address})"

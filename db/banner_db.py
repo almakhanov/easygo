@@ -18,8 +18,6 @@ class BannerDB:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS banners (
                     id SERIAL PRIMARY KEY,
-                    price_per_week INTEGER NOT NULL,
-                    price_per_day INTEGER NOT NULL,
                     model VARCHAR(255) NOT NULL,
                     image VARCHAR(3000) NOT NULL,
                     product_type VARCHAR(255) NOT NULL
@@ -34,15 +32,22 @@ class BannerDB:
         rows = cur.fetchall()
         banners = []
         for row in rows:
-            banners.append(Banner(row[1], row[2], row[3], row[4], row[5]))
+            banners.append(Banner(row[1], row[2], row[3]))
         return banners
+
+    def get_by_product_type(self, product_type):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM banners WHERE product_type = %s", (product_type,))
+        row = cur.fetchone()
+
+        return Banner(row[1], row[2], row[3])
 
     def insert_all(self, banners):
         cur = self.conn.cursor()
         for banner in banners:
             cur.execute(
-                "INSERT INTO banners (price_per_week, price_per_day, model, image, product_type) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (product_type) DO NOTHING RETURNING id",
-                (banner.pricePerWeek, banner.pricePerDay, banner.model, banner.image, banner.product_type))
+                "INSERT INTO banners (model, image, product_type) VALUES (%s, %s, %s) ON CONFLICT (product_type) DO NOTHING RETURNING id",
+                (banner.model, banner.image, banner.product_type))
 
         self.conn.commit()
         cur.close()
