@@ -2,7 +2,7 @@ import requests
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from chat.chat_utils import HandlerOption
+from chat.utils import HandlerOption
 from db.banner_db import BannerDB
 from db.price_db import PriceDB
 from db.product_db import ProductDB

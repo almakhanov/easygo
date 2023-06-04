@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from chat.chat_utils import HandlerOption
+from chat.utils import HandlerOption
 from chat.complete import complete_rent
 from db.client_db import ClientDB
 

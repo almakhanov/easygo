@@ -2,9 +2,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from chat.chat_utils import payment_type_map, ActionType
-from chat.chat_utils import HandlerOption
-from chat.client_fields import check_client
+from chat.utils import payment_type_map, ActionType
+from chat.utils import HandlerOption
+from chat.register import check_client
 from db.banner_db import BannerDB
 from db.price_db import PriceDB
 from db.product_db import ProductDB

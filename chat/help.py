@@ -2,8 +2,8 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from chat.chat_start import main_keyboard
-from chat.chat_utils import HandlerOption
+from chat.start import main_keyboard
+from chat.utils import HandlerOption
 
 
 class HelpOptions:

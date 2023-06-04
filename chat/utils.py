@@ -6,6 +6,7 @@ class HandlerOption:
     HELP = 1
     BOOKING = 2
     CLIENT = 3
+    ADMIN = 4
 
 
 class ActionType:

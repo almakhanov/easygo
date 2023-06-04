@@ -1,29 +1,36 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, ConversationHandler, \
+    CallbackQueryHandler, PicklePersistence
 
+from chat.admin import start_admin_panel, run_admin
 from chat.banners import show_price
 from chat.booking import start_rent, inline_options
-from chat.chat_utils import main_keyboard, ActionType
-from chat.client_fields import message_handler, ClientState
+from chat.utils import main_keyboard, ActionType
+from chat.register import message_handler, ClientState
 from chat.contacts import show_contacts
 from chat.help import show_help_options, run_help
+from db.admin_db import AdminDB
 from db.client_db import ClientDB
 from models.client import Client
-from chat.chat_utils import HandlerOption
+from chat.utils import HandlerOption
 from utils.constants import TOKEN
 
 
 def init_bot() -> None:
-    application = Application.builder().token(TOKEN).build()
+    persistence = PicklePersistence(filepath="persistence")
+    application = Application.builder().token(TOKEN).persistence(persistence).build()
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
             HandlerOption.ACTION: [MessageHandler(filters.TEXT, run_action)],
             HandlerOption.HELP: [MessageHandler(filters.TEXT, run_help)],
             HandlerOption.BOOKING: [CallbackQueryHandler(inline_options)],
-            HandlerOption.CLIENT: [MessageHandler(filters.TEXT, message_handler)]
+            HandlerOption.CLIENT: [MessageHandler(filters.TEXT, message_handler)],
+            HandlerOption.ADMIN: [MessageHandler(filters.TEXT, run_admin)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        name="global",
+        persistent=True
     )
 
     application.add_handler(conv_handler)
@@ -31,6 +38,15 @@ def init_bot() -> None:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    admins_objs = AdminDB().get_all()
+    for admin in admins_objs:
+        if update.effective_chat.id.__str__() == admin.chat_id:
+            context.user_data["admin_data"] = admin
+            return await start_admin_panel(update, context)
+    return await start_client_panel(update, context)
+
+
+async def start_client_panel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = f"Привет {update.effective_user.full_name}!\n\n" \
            f"Я телеграм бот компании EasyGo. " \
            f"Мы занимаемся арендой мопедов в городе Астана."

@@ -5,8 +5,8 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from chat.chat_utils import payment_type_map
-from chat.chat_utils import HandlerOption
+from chat.utils import payment_type_map
+from chat.utils import HandlerOption
 from db.client_db import ClientDB
 from db.price_db import PriceDB
 from db.product_db import ProductDB
@@ -14,7 +14,7 @@ from db.rent_db import RentDB
 from models.payment_type import PaymentType
 from models.rent import Rent
 from models.rent_status import RentStatus
-from utils.constants import ADMINS, TOKEN
+from utils.constants import TOKEN
 
 
 async def complete_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -64,13 +64,13 @@ async def complete_rent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     )
     rent_db.insert(rent)
 
-    for admin in ADMINS:
-        try:
-            req_body = f'https://api.telegram.org/bot' + TOKEN + '/sendMessage?chat_id=' + admin + '&parse_mode=HTML&text=' + title
-            resp = requests.get(req_body)
-            print(resp.content)
-        except Exception as e:
-            print(e)
+    # for admin in ADMINS:
+    #     try:
+    #         req_body = f'https://api.telegram.org/bot' + TOKEN + '/sendMessage?chat_id=' + admin + '&parse_mode=HTML&text=' + title
+    #         resp = requests.get(req_body)
+    #         print(resp.content)
+    #     except Exception as e:
+    #         print(e)
 
     try:
         await update.callback_query.message.reply_text(title, parse_mode=ParseMode.HTML)

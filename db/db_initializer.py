@@ -1,7 +1,9 @@
+from db.admin_db import AdminDB
 from db.banner_db import BannerDB
 from db.client_db import ClientDB
 from db.price_db import PriceDB
 from db.product_db import ProductDB
+from models.admin import Admin
 from models.banner import Banner
 from models.period import Period
 from models.price import Price
@@ -16,9 +18,11 @@ def init_db() -> None:
     client_db = ClientDB()
     banner_db = BannerDB()
     prices_db = PriceDB()
+    admins_db = AdminDB()
     fill_products(product_db)
     fill_banners(banner_db)
     fill_prices(prices_db)
+    fill_admins(admins_db)
 
 
 def fill_products(product_db) -> None:
@@ -57,17 +61,25 @@ def fill_prices(price_db) -> None:
         Price(product_type=ProductType.HONDA_DIO, period=Period.ONE_DAY, price=7000, text="1 день ☀️", days=1),
         Price(product_type=ProductType.HONDA_DIO, period=Period.TWO_DAYS, price=14000, text="2 дня ☀️", days=2),
         Price(product_type=ProductType.HONDA_DIO, period=Period.THREE_DAYS, price=20000, text="3 дня ☀️", days=3),
-        Price(product_type=ProductType.HONDA_DIO, period=Period.ONE_WEEK, price=25000, text="1 неделя 7️⃣", days=7),
-        Price(product_type=ProductType.HONDA_DIO, period=Period.TWO_WEEKS, price=50000, text="2 недели 7️⃣", days=14),
-        Price(product_type=ProductType.HONDA_DIO, period=Period.THREE_WEEKS, price=70000, text="3 недели 7️⃣", days=21),
+        Price(product_type=ProductType.HONDA_DIO, period=Period.ONE_WEEK, price=25000, text="1 неделя 🌎", days=7),
+        Price(product_type=ProductType.HONDA_DIO, period=Period.TWO_WEEKS, price=50000, text="2 недели 🌎", days=14),
+        Price(product_type=ProductType.HONDA_DIO, period=Period.THREE_WEEKS, price=70000, text="3 недели 🌎", days=21),
         Price(product_type=ProductType.HONDA_DIO, period=Period.ONE_MONTH, price=80000, text="1 месяц 🌙", days=30),
         Price(product_type=ProductType.VILIMI_M8, period=Period.ONE_DAY, price=9000, text="1 день ☀️", days=1),
         Price(product_type=ProductType.VILIMI_M8, period=Period.TWO_DAYS, price=18000, text="2 дня ☀️", days=2),
         Price(product_type=ProductType.VILIMI_M8, period=Period.THREE_DAYS, price=25000, text="3 дня ☀️", days=3),
-        Price(product_type=ProductType.VILIMI_M8, period=Period.ONE_WEEK, price=30000, text="1 неделя 7️⃣", days=7),
-        Price(product_type=ProductType.VILIMI_M8, period=Period.TWO_WEEKS, price=60000, text="2 недели 7️⃣", days=14),
-        Price(product_type=ProductType.VILIMI_M8, period=Period.THREE_WEEKS, price=80000, text="3 недели 7️⃣", days=21),
+        Price(product_type=ProductType.VILIMI_M8, period=Period.ONE_WEEK, price=30000, text="1 неделя 🌎", days=7),
+        Price(product_type=ProductType.VILIMI_M8, period=Period.TWO_WEEKS, price=60000, text="2 недели 🌎", days=14),
+        Price(product_type=ProductType.VILIMI_M8, period=Period.THREE_WEEKS, price=80000, text="3 недели 🌎", days=21),
         Price(product_type=ProductType.VILIMI_M8, period=Period.ONE_MONTH, price=100000, text="1 месяц 🌙", days=30),
     ]
     price_db.clear()
     price_db.insert_all(list)
+
+
+def fill_admins(admin_db) -> None:
+    list = [
+        Admin("337256252", "Солнышко"),
+        # Admin("311459146", "God")
+    ]
+    admin_db.insert_all(list)
